@@ -1,0 +1,18 @@
+# Bi mat - TUYET DOI khong commit
+*.pem
+*.key
+*_token*
+*password*
+.env
+
+# File nang / khong can thiet
+*.pcap
+*.vmdk
+*.ova
+*.iso
+*.log
+
+# Rac he thong
+.DS_Store
+Thumbs.db
+*~
