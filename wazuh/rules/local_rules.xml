@@ -65,3 +65,181 @@
   </rule>
 
 </group>
+
+<group name="soc_lab,web,c2,">
+  <rule id="100001" level="12">
+    <if_sid>86601</if_sid>
+    <field name="alert.signature">LAB T1071.001 - HTTP GET BEACONING pixel.gif</field>
+    <description>SOC Lab: T1071.001 - C2 HTTP GET Beaconing pixel.gif from $(srcip)</description>
+    <mitre>
+      <id>T1071.001</id>
+    </mitre>
+    <group>c2,command_and_control,web_protocol,</group>
+  </rule>
+
+  <rule id="100002" level="12">
+    <if_sid>86601</if_sid>
+    <field name="alert.signature_id">1000005</field>
+    <description>T1001.002 - C2 Header Steganography: X-Cache command embed detected</description>
+    <mitre>
+      <id>T1001.002</id>
+    </mitre>
+    <group>c2,header_stego,</group>
+  </rule>
+
+  <!-- Alert từ Suricata sid 9000003: Beacon check-in -->
+  <rule id="100003" level="10">
+    <if_sid>86601</if_sid>
+    <field name="alert.signature_id">1000006</field>
+    <description>T1001.002 - C2 Beacon check-in via /track.js detected</description>
+    <mitre>
+      <id>T1001.002</id>
+    </mitre>
+    <group>c2,beacon,</group>
+  </rule>
+
+  <!-- Alert từ Suricata sid 9000004: Exfil User-Agent -->
+  <rule id="100004" level="13">
+    <if_sid>86601</if_sid>
+    <field name="alert.signature_id">1000007</field>
+    <description>T1001.002 - C2 Data Exfiltration via anomalous User-Agent detected</description>
+    <mitre>
+      <id>T1001.002</id>
+    </mitre>
+    <group>c2,exfiltration,</group>
+  </rule>
+
+</group>
+
+
+
+<!--
+  Wazuh Behavior Rules — Cloud Storage C2
+  File: /var/ossec/etc/rules/cloud_c2_rules.xml
+  KHÔNG dùng hash — detect hành vi process + filesystem + network
+-->
+<group name="cloud_c2,mitre,">
+
+  <!-- ══════════════════════════════════════════════════════
+       NHÓM 1: PERSISTENCE — Crontab modification
+       ════════════════════════════════════════════════════ -->
+
+  <!-- Rule 100201: Crontab bị sửa bởi non-crontab process -->
+  <rule id="100201" level="12">
+    <if_group>audit</if_group>
+    <field name="audit.key">crontab_modification</field>
+    <field name="audit.exe" negate="yes">^/usr/bin/crontab$</field>
+    <description>T1053.003 - Crontab modified by unexpected process: $(audit.exe)</description>
+    <mitre><id>T1053.003</id></mitre>
+    <group>persistence,rootkit,</group>
+  </rule>
+
+  <!-- Rule 100202: Crontab sửa bình thường (lower level để phân biệt) -->
+  <rule id="100202" level="7">
+    <if_group>audit</if_group>
+    <field name="audit.key">crontab_modification</field>
+    <field name="audit.exe">^/usr/bin/crontab$</field>
+    <description>T1053.003 - User crontab modification via crontab command</description>
+    <mitre><id>T1053.003</id></mitre>
+    <group>persistence,</group>
+  </rule>
+
+  <!-- ══════════════════════════════════════════════════════
+       NHÓM 2: EXECUTION — Non-interactive shell
+       ════════════════════════════════════════════════════ -->
+
+  <!-- Rule 100203: Shell spawn từ non-terminal process -->
+  <rule id="100203" level="12">
+    <if_group>audit</if_group>
+    <field name="audit.key">shell_execution</field>
+    <field name="audit.terminal" negate="yes">pts</field>
+    <field name="audit.terminal" negate="yes">tty</field>
+    <description>T1059.004 - Non-interactive shell spawned by $(audit.comm) (possible C2 exec)</description>
+    <mitre><id>T1059.004</id></mitre>
+    <group>execution,c2,</group>
+  </rule>
+
+  <!-- Rule 100204: Shell spawn kèm theo outbound network (correlation) -->
+  <rule id="100204" level="15" timeframe="120" frequency="2">
+    <if_matched_sid>100103</if_matched_sid>
+    <same_field>audit.ppid</same_field>
+    <description>T1059.004+T1102 - Repeated non-interactive shell from same parent (C2 command loop)</description>
+    <mitre>
+      <id>T1059.004</id>
+      <id>T1102.002</id>
+    </mitre>
+    <group>execution,c2,critical,</group>
+  </rule>
+
+  <!-- ══════════════════════════════════════════════════════
+       NHÓM 3: DEFENSE EVASION — Ephemeral /tmp files
+       ════════════════════════════════════════════════════ -->
+
+  <!-- Rule 100205: File tạm trong /tmp bị xoá ngay (credential staging) -->
+  <rule id="100205" level="8">
+    <if_group>audit</if_group>
+    <field name="audit.key">tmp_file_deleted</field>
+    <field name="audit.name">\.tmp$</field>
+    <description>T1027 - Ephemeral .tmp file deleted in /tmp (credential staging indicator)</description>
+    <mitre><id>T1027</id></mitre>
+    <group>defense_evasion,</group>
+  </rule>
+
+  <!-- ══════════════════════════════════════════════════════
+       NHÓM 4: C2 NETWORK — Suricata → Wazuh correlation
+       ════════════════════════════════════════════════════ -->
+
+  <!-- Rule 100206: Suricata bắt Cloud C2 beacon alert -->
+  <rule id="100206" level="14">
+    <if_sid>86601</if_sid>
+    <field name="alert.signature">googleapis</field>
+    <description>T1102.002 - Suricata: Cloud C2 beacon to googleapis.com detected</description>
+    <mitre><id>T1102.002</id></mitre>
+    <group>c2,network,</group>
+  </rule>
+
+  <!-- Rule 100207: Suricata Drive API polling alert -->
+  <rule id="100207" level="13">
+    <if_sid>86601</if_sid>
+    <field name="alert.signature">Drive REST API polling</field>
+    <description>T1102.002 - Suricata: Google Drive API polling pattern (C2 beacon)</description>
+    <mitre>
+      <id>T1102.002</id>
+      <id>T1071.001</id>
+    </mitre>
+    <group>c2,network,</group>
+  </rule>
+
+  <!-- ══════════════════════════════════════════════════════
+       NHÓM 5: CORRELATION — Network + Host combined
+       Đây là rule quan trọng nhất cho nhà tuyển dụng thấy
+       ════════════════════════════════════════════════════ -->
+
+  <!-- Rule 100210: CRITICAL — Network beacon + shell spawn từ cùng host -->
+  <rule id="100210" level="15" timeframe="300" frequency="2">
+    <if_matched_sid>100106</if_matched_sid>
+    <if_matched_sid>100103</if_matched_sid>
+    <same_field>agent.name</same_field>
+    <description>CRITICAL T1102.002+T1059.004 - Cloud C2 confirmed: googleapis beacon AND shell spawn on same host</description>
+    <mitre>
+      <id>T1102.002</id>
+      <id>T1059.004</id>
+      <id>T1071.001</id>
+    </mitre>
+    <group>c2,critical,alert,</group>
+  </rule>
+
+  <!-- Rule 100211: CRITICAL — Persistence + Network C2 combo -->
+  <rule id="100211" level="15" timeframe="600" frequency="2">
+    <if_matched_sid>100106</if_matched_sid>
+    <if_matched_sid>100102</if_matched_sid>
+    <same_field>agent.name</same_field>
+    <description>CRITICAL T1102.002+T1053.003 - Cloud C2 + persistence: googleapis beacon AND crontab modification</description>
+    <mitre>
+      <id>T1102.002</id>
+      <id>T1053.003</id>
+    </mitre>
+    <group>c2,critical,alert,</group>
+  </rule>
+
+</group>

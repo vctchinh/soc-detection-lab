@@ -1,8 +1,40 @@
 # ICMP ping toi victim
 alert icmp any any -> $HOME_NET any (msg:"LAB T1018 - ICMP echo request toi Victim"; itype:8; sid:1000001; rev:1;)
 
-# T1046 nhieu ket noi syn toi cac cong khac nhau trong thoi gian ngan (network service discovery)
+#3 nhieu ket noi syn toi cac cong khac nhau trong thoi gian ngan (MITRE T1046 - network service discovery)
 alert tcp any any -> $HOME_NET any (msg:"LAB T1046 - Nghi ngo quet cong TCP"; flags:S; threshold:type both, track by_src, count 20, seconds 10; sid:1000002; rev:1;)
 
-# T1110 nhieu lan bat tay SSH tu mot nguon (Brute Force)
+#Nhieu lan bat tay SSH tu mot nguon (MITRE T1110 - Brute Force)
 alert tcp any any -> $HOME_NET 22 (msg:"LAB T1110 - Nghi ngo brute force SSH"; flags:S; threshold:type both, track by_src, count 10, seconds 30; sid:1000003; rev:1;)
+
+#HTTP Get Beaconing
+alert http any any -> $HOME_NET 8080 (msg:"LAB T1071.001 - HTTP GET BEACONING pixel.gif"; flow:established,to_server; http.uri; content:"pixel.gif"; distance:0; sid:1000004; rev:2; metadata:mitre technique T1071.001;)
+
+# Rule 1: Response chứa X-Cache header với payload dài (C2 -> Victim)
+# Direction: Kali(any) -> Victim(HOME_NET), port 8080
+alert http any 8080 -> $HOME_NET any (msg:"T1001.002 - C2 Header Steganography X-Cache cmd embed"; flow:established,to_client; http.response_header; content:"X-Cache|3a|"; isdataat:50,relative; sid:1000005; rev:2; metadata:mitre_technique T1001.002, mitre_tactic command-and-control;)
+
+# Rule 2: Beacon check-in GET /track.js với X-Session-Token
+alert http $HOME_NET any -> any 8080 (msg:"T1001.002 - C2 Beacon GET /track.js check-in"; flow:established,to_server; http.method; content:"GET"; http.uri; content:"/track.js"; http.header_names; content:"X-Session-Token"; sid:1000006; rev:2; metadata:mitre_technique T1001.002, mitre_tactic command-and-control;)
+
+# Rule 3: Exfil qua User-Agent base64 dài bất thường (Victim -> C2)
+alert http $HOME_NET any -> any 8080 (msg:"T1001.002 - C2 Exfil via anomalous User-Agent base64"; flow:established,to_server; http.method; content:"POST"; http.uri; content:"/beacon"; http.user_agent; isdataat:150; sid:1000007; rev:2; metadata:mitre_technique T1001.002, mitre_tactic exfiltration;)
+
+# — 9100001: Non-browser TLS to googleapis —————————————————
+alert tls $HOME_NET any -> any 443 (msg:"BEHAVIOR-C2 Non-browser TLS SNI googleapis.com"; flow:established,to_server; tls.sni; content:"googleapis.com"; detection_filter:track by_src, count 3, seconds 180; classtype:trojan-activity; sid:9100001; rev:4; metadata:mitre_technique T1102.002;)
+
+# — 9100002: Drive API polling (non-browser UA) ——————————————
+alert http $HOME_NET any -> any any (msg:"BEHAVIOR-C2 Google Drive REST API polling beacon candidate"; flow:established,to_server; http.host; content:"googleapis.com"; http.uri; pcre:"/\/drive\/v3\/files\?.*q=/"; http.user_agent; pcre:"/^(?!.*(?:Chrome|Firefox|Safari|curl|wget))/"; detection_filter:track by_src, count 3, seconds 200; classtype:trojan-activity; sid:9100002; rev:4; metadata:mitre_technique T1102.002;)
+
+# — 9100003: Upload to googleapis (beacon/exfil) —————————————
+alert http $HOME_NET any -> any any (msg:"BEHAVIOR-C2 Periodic upload to googleapis beacon or exfil"; flow:established,to_server; http.host; content:"googleapis.com"; http.method; content:"POST"; http.uri; content:"/upload/drive/v3/"; detection_filter:track by_src, count 3, seconds 300; classtype:policy-violation; sid:9100003; rev:4; metadata:mitre_technique T1567.002;)
+
+# — 9100004: Programmatic OAuth2 token request ———————————————
+alert http $HOME_NET any -> any any (msg:"BEHAVIOR-C2 Programmatic OAuth2 token request service account"; flow:established,to_server; http.host; content:"googleapis.com"; http.method; content:"POST"; http.uri; content:"/o/oauth2/token"; http.user_agent; pcre:"/^(?!.*(?:Chrome|Firefox|Safari))/"; classtype:policy-violation; sid:9100004; rev:4; metadata:mitre_technique T1078.004;)
+
+# — 9100005: Sustained low-frequency beacon ——————————————————
+alert tls $HOME_NET any -> any 443 (msg:"BEHAVIOR-C2 Sustained googleapis beacon pattern jitter C2"; flow:established,to_server; tls.sni; content:"googleapis.com"; detection_filter:track by_src, count 10, seconds 900; classtype:trojan-activity; sid:9100005; rev:4; metadata:mitre_technique T1071.001;)
+
+# — 9100006: Drive query for C2 filenames ————————————————————
+alert http $HOME_NET any -> any any (msg:"BEHAVIOR-C2 Drive API query for C2 filenames cmd beacon result"; flow:established,to_server; http.host; content:"googleapis.com"; http.uri; pcre:"/\/drive\/v3\/files.*q=.*(?:cmd_|beacon_|result_)/"; classtype:trojan-activity; sid:9100006; rev:3; metadata:mitre_technique T1102.002;)
+
